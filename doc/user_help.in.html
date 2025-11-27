@@ -241,16 +241,27 @@ ESC.
 
 <h3 id="copy-and-paste">Copy and paste</h3>
 <p>
-To copy some text just hold down the left mouse button and move to select the
-area to copy. To paste, go to the target application and press the middle mouse
-button.
+Dillo uses the Primary and Clipboard selections to copy and paste text. The
+Primary selection captures text that gets selected as soon as the left button is
+released, while to copy it in the Clipboard selection it requires the usual
+Ctrl+C and Ctrl+V shortcut.
+<p>
+To copy some text in the Primary selection just hold down the left mouse button
+and move to select the area to copy. To paste, go to the target application and
+press the middle mouse button. To copy text into the Clipboard, select the text
+and press Ctrl+C then go to the destination and press Ctrl+V to paste.
 <p>
 If you want to select more than one screen, hold the mouse left button down and
 scroll with PgUp, PgDn or the arrow keys.
-<P>
-If you want to paste an URL into Dillo, do it on the "clear-URL"
-button (the "X" next to the <a href="#location-bar">location bar</a>).
 <p>
+When a link is copied from the context menu, it is placed both in the Primary
+and Clipboard selections, so you can paste the URL with the middle click or with
+Ctrl+V.
+<p>
+If you want to paste an URL into Dillo from the Primary selection, do it on the
+"clear-URL" button (the "X" next to the <a href="#location-bar">location
+bar</a>) and the URL will be opened as well. You can also paste the URL using
+the Clipboard by using the Ctrl+V shortcut then pressing Enter to visit it.
 
 <h3 id="zoom">Zoom</h3>
 <p>
@@ -294,7 +305,8 @@ bar to navigate among history pages.
 <p>
 When you follow several links across different web pages, they are remembered in
 case you can to go back. Use the "Back" and "Forward" buttons of the panel to go
-to the previous or next page.
+to the previous or next page. Click with the left button to open the page in the
+same tab or use the middle button to open it in a new tab.
 <p>
 You can also right-click on the Back or Forward buttons to open a menu with the
 list of previous or next pages available, so you can jump directly to them. Use
@@ -303,7 +315,8 @@ them in a new tab.
 <p>
 The <code>,</code> (comma) and <code>.</code> (dot) keys can be used to jump
 backwards or forward (mnemonic: those keys are usually labeled "&lt;" and
-"&gt;").
+"&gt;"). You can also use the back and forward buttons on your mouse if they are
+available.
 
 <h3 id="location-bar">Location bar</h3>
 <p>
@@ -344,20 +357,25 @@ DuckDuckGo for the keywords "dillo browser".
 <h3 id="tabs">Tabs</h3>
 <p>
 Dillo can open different web pages into tabs. To open a link in a new tab click
-the middle button instead of the left button. The same applies to buttons to
-submit a form. A new tab can also be opened from the <code>File</code> menu or
-using the shortcut <code>Ctrl+T</code>.
+the middle button instead of the left button or keep <code>Control</code>
+pressed while left-clicking a link. The same applies to buttons to submit a
+form. A new tab can also be opened from the <code>File</code> menu or using the
+shortcut <code>Ctrl+T</code>.
 <p>
-By default the new tab will be automatically focused. If you want to change
-this behaviour, adjust the following options in the 
-<a href="#dillorc">dillorc</a> configuration file:
+Press <code>Shift</code> while opening a page in a new tab to focus the tab. If
+you want this behaviour to be the default, set the following option
+in the <a href="#dillorc">dillorc</a> configuration file:
 <pre>
-middle_click_opens_new_tab
-focus_new_tab
+focus_new_tab=YES
 </pre>
+If this option is set, pressing <code>Shift</code> will instead avoid focusing
+the new tab.
 <p>
-Press <code>Shift</code> to temporarily reverse the focusing behaviour while
-middle-clicking on a link.
+It is also possible to have the middle-click open a window instead of a tab. For
+this set the option:
+<pre>
+middle_click_opens_new_tab=NO
+</pre>
 <p>
 To close a tab press the X button on the top right (only visible with multiple
 tabs). You can also close the tab by clicking with the right button on the tab
@@ -372,6 +390,10 @@ bookmarks page set the following line in <a href="#dillorc">dillorc</a>:
 <pre>
 new_tab_page="dpi:/bm/"
 </pre>
+<p>
+You can quickly focus the N-th tab by pressing <code>Alt</code> and the tab
+number, for example <code>Alt+3</code> will focus the third tab. Using
+<code>Alt+0</code> focuses the tenth tab, as they start counting at 1.
 
 <h3 id="bookmarks">Bookmarks</h3>
 <p>
@@ -442,7 +464,7 @@ HTTPS traffic will be sent through the proxy.
 
 <h3 id="ad-blocking">Ad blocking</h3>
 <p>Dillo has the ability to block content when loading a page based on the domain
-the embeded content is being loaded from. You can control how Dillo handles
+the embedded content is being loaded from. You can control how Dillo handles
 automatic requests for resources (like images and style sheets) that aren't at
 the same domain as the original page.</p>
 
@@ -481,7 +503,7 @@ following sections.</p>
 
 <h3 id="dillorc">Dillorc</h3>
 
-<p>The main configuration of Dillo is controled by the
+<p>The main configuration of Dillo is controlled by the
 <a href="file:~/.dillo/dillorc"><code>dillorc</code></a> file.
 The list of all available options can be found in the system
 configuration file, typically 
@@ -670,7 +692,7 @@ tool.
 
 <h3 id="keysrc">Keysrc</h3>
 
-<p>The mapping of keys in Dillo is contolled by the
+<p>The mapping of keys in Dillo is controlled by the
 <a href="file:~/.dillo/keysrc"><code>~/.dillo/keysrc</code></a> file.
 The format is "<code>key = action</code>" or
 "<code>&lt;modifier&gt;key = action</code>". Lines that begin with a "#" are comments.
@@ -790,6 +812,7 @@ Most actions can be issued by using a keyboard shortcut. The key bindings can be
 changed in the
 <code><a href="file:~/.dillo/keysrc">~/.dillo/keysrc</a></code> file (see the
 <a href="#keysrc">keysrc</a> section).
+To see the current key bindings go to <a href='about:keys'>about:keys</a>.
 The list of default bindings is given in the following table.
 <p>
 <table>
@@ -805,6 +828,7 @@ The list of default bindings is given in the following table.
 <tr><td>Ctrl-U                     <td>                <td>View source
 <tr><td>Ctrl-B                     <td>Bookmarks       <td>View bookmarks
 <tr><td>Ctrl-Q                     <td>Quit            <td>Quit dillo
+<tr><td>Ctrl-C                     <td>Copy            <td>Copy to clipboard
 <tr><td>Ctrl-+ or Ctrl-=           <td>Bigger          <td>Zoom in
 <tr><td>Ctrl--                     <td>Smaller         <td>Zoom out
 <tr><td>Ctrl-0                     <td>100%            <td>Reset zoom to 100%

@@ -2,6 +2,7 @@
  * Dillo Widget
  *
  * Copyright 2005-2007 Sebastian Geerken <sgeerken@dillo.org>
+ * Copyright 2025 Rodrigo Arias Mallo <rodarima@gmail.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -197,7 +198,7 @@ bool SelectionState::buttonRelease (Iterator *it, int charPos, int linkNo,
          // nothing selected
          resetSelection ();
       else {
-         copy ();
+         copy (0);
          selectionState = SELECTED;
       }
    }
@@ -422,7 +423,7 @@ void SelectionState::highlight0 (bool fl, DeepIterator *from, int fromChar,
    }
 }
 
-void SelectionState::copy()
+void SelectionState::copy(int selection)
 {
    if (from && to) {
       Iterator *si;
@@ -494,7 +495,7 @@ void SelectionState::copy()
          delete i;
       }
 
-      layout->copySelection(strbuf.getChars());
+      layout->copySelection(strbuf.getChars(), selection);
    }
 }
 

@@ -2,6 +2,7 @@
  * Dillo Widget
  *
  * Copyright 2005-2007 Sebastian Geerken <sgeerken@dillo.org>
+ * Copyright 2025 Rodrigo Arias Mallo <rodarima@gmail.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -42,7 +43,7 @@
 static Fl_Color fltkui_dimmed(Fl_Color c, Fl_Color bg)
 {
    return fl_color_average(c, bg, .33f);
-};
+}
 
 //----------------------------------------------------------------------------
 /*
@@ -78,7 +79,7 @@ CustInput2::CustInput2 (int x, int y, int w, int h, const char* l) :
    placeholder = NULL;
    showing_placeholder = false;
    usual_color = FL_BLACK;      /* just init until widget style is set */
-};
+}
 
 /*
  * Show normal text.
@@ -174,8 +175,8 @@ int CustInput2::handle(int e)
          return 0;
       }
       if (modifier == FL_CTRL) {
-         if (k == 'a' || k == 'e') {
-            position(k == 'a' ? 0 : size());
+         if (k == 'e') {
+            position(size());
             return 1;
          } else if (k == 'k') {
             cut(position(), size());
@@ -235,7 +236,7 @@ CustTextEditor::CustTextEditor (int x, int y, int w, int h, const char* l) :
    buffer(new Fl_Text_Buffer());
    usual_color = FL_BLACK;      /* just init until widget style is set */
    text_copy = NULL;
-};
+}
 
 CustTextEditor::~CustTextEditor ()
 {

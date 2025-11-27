@@ -849,10 +849,10 @@ static NSVGgradient* nsvg__createGradient(NSVGparser* p, const char* id, const f
 			break;
 		}
 		nextRef = nsvg__findGradientData(p, ref->ref);
-		if (nextRef == ref) break; // prevent infite loops on malformed data
+		if (nextRef == ref) break; // prevent infinite loops on malformed data
 		ref = nextRef;
 		refIter++;
-		if (refIter > 32) break; // prevent infite loops on malformed data
+		if (refIter > 32) break; // prevent infinite loops on malformed data
 	}
 	if (stops == NULL) return NULL;
 
@@ -1281,7 +1281,7 @@ static unsigned int nsvg__parseColorRGB(const char* str)
 				while (*str && nsvg__isdigit(*str)) str++;	// skip fractional part
 			}
 			if (*str == '%') str++; else break;
-			while (nsvg__isspace(*str)) str++;
+			while (*str && nsvg__isspace(*str)) str++;
 			if (*str == delimiter[i]) str++;
 			else break;
 		}

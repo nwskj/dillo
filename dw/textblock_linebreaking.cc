@@ -513,7 +513,7 @@ void Textblock::processWord (int wordIndex)
       //
       // (Note: the hyphenated word is often *before* wordIndex, and
       // it may be even more than one word, which makes it nearly
-      // impossible to reconstruct what has happend. Therefore, there
+      // impossible to reconstruct what has happened. Therefore, there
       // is no simpler approach to handle this.)
 
       DBG_OBJ_MSGF ("construct.paragraph", 1,
@@ -1492,7 +1492,7 @@ int Textblock::hyphenateWord (int wordIndex, int *addIndex1)
 
       // AccumulateWordData() will calculate the width, which depends
       // on the borders (possibly limited by floats), which depends on
-      // the widgeds so far. For this reason, it is important to first
+      // the widgets so far. For this reason, it is important to first
       // make all words consistent before calling
       // accumulateWordData(); therefore the second loop.
 
@@ -1553,7 +1553,7 @@ void Textblock::moveWordIndices (int wordIndex, int num, int *addIndex1)
          par->firstWord += num;
    }
 
-   // Addiditional indices. When needed, the number can be extended.
+   // Additional indices. When needed, the number can be extended.
    if (addIndex1 && *addIndex1 >= wordIndex)
       *addIndex1 += num;
 
@@ -1653,7 +1653,7 @@ void Textblock::accumulateWordData (int wordIndex)
                  lineIndex, firstWordOfLine, lineBreakWidth);
 
    if (wordIndex == firstWordOfLine) {
-      // first word of the (not neccessarily yet existing) line
+      // first word of the (not necessarily yet existing) line
       word->totalWidth = word->size.width + word->hyphenWidth;
       word->maxAscent = word->size.ascent;
       word->maxDescent = word->size.descent;
@@ -1804,7 +1804,23 @@ void Textblock::alignLine (int lineIndex)
          int lineBreakWidth =
             this->lineBreakWidth - (line->leftOffset + line->rightOffset);
 
-         switch (firstWord->style->textAlign) {
+         core::style::TextAlignType alignStyle = core::style::TEXT_ALIGN_LEFT;
+
+         /**
+          * Only inline elements should be affected by the text-align property.
+          * While alignStyle will still apply to other elements, the default
+          * value of TEXT_ALIGN_LEFT will have no effect on the alignment.
+          */
+         if (firstWord->style->display == core::style::DISPLAY_INLINE ||
+             firstWord->style->display == core::style::DISPLAY_INLINE_BLOCK) {
+            /**
+             * Elements that *are* affected by text-align are aligned based on
+             * the text-align value of their containing element.
+             */
+            alignStyle = getStyle()->textAlign;
+         }
+
+         switch (alignStyle) {
          case core::style::TEXT_ALIGN_LEFT:
             DBG_OBJ_MSG ("construct.line", 1,
                          "first word has 'text-align: left'");

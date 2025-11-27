@@ -2,7 +2,7 @@
  * Dillo web browser
  *
  * Copyright 1999-2007 Jorge Arellano Cid <jcid@dillo.org>
- * Copyright 2024 Rodrigo Arias Mallo <rodarima@gmail.com>
+ * Copyright 2024-2025 Rodrigo Arias Mallo <rodarima@gmail.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -69,6 +69,7 @@
 #include "dw/table.hh"
 
 static volatile sig_atomic_t sig_reload = 0;
+static volatile sig_atomic_t sig_exit = 0;
 
 /**
  * Command line options structure
@@ -81,7 +82,7 @@ typedef enum {
    DILLO_CLI_VERSION       = 1 << 3,
    DILLO_CLI_LOCAL         = 1 << 4,
    DILLO_CLI_GEOMETRY      = 1 << 5,
-   DILLO_CLI_ERROR         = 1 << 15,
+   DILLO_CLI_ERROR         = 1 << 15
 } OptID;
 
 typedef struct {
@@ -155,6 +156,11 @@ static void handler_usr1(int signum)
    sig_reload = 1;
 }
 
+static void handler_usr2(int signum)
+{
+   sig_exit = 1;
+}
+
 /**
  * Establish SIGCHLD handler
  */
@@ -165,7 +171,7 @@ static void est_sigchld(void)
 
    (void) sigemptyset(&set);
    sigact.sa_handler = raw_sigchld2; /* our custom handler */
-   sigact.sa_mask = set;             /* no aditional signal blocks */
+   sigact.sa_mask = set;             /* no additional signal blocks */
    sigact.sa_flags = SA_NOCLDSTOP;   /* ignore stop/resume states */
    if (sigaction(SIGCHLD, &sigact, NULL) == -1) {
       perror("sigaction");
@@ -173,6 +179,15 @@ static void est_sigchld(void)
    }
 
    if (signal(SIGUSR1, handler_usr1) == SIG_ERR) {
+      perror("signal failed");
+      exit(1);
+   }
+
+   /* For now we use SIGUSR2 to exit cleanly, so we can run the
+    * automatic HTML test and check that there are no leaks. In the
+    * future we should use a better communication mechanism. This
+    * feature is not documented, as it is intended for testing only. */
+   if (signal(SIGUSR2, handler_usr2) == SIG_ERR) {
       perror("signal failed");
       exit(1);
    }
@@ -496,6 +511,8 @@ int main(int argc, char **argv)
    a_UIcmd_init();
    StyleEngine::init();
 
+   Keys::genAboutKeys();
+
    dw::core::Widget::setAdjustMinWidth (prefs.adjust_min_width);
    dw::Table::setAdjustTableMinWidth (prefs.adjust_table_min_width);
    dw::Textblock::setPenaltyHyphen (prefs.penalty_hyphen);
@@ -603,6 +620,9 @@ int main(int argc, char **argv)
       if (sig_reload) {
          sig_reload = 0;
          a_UIcmd_reload_all_active();
+      } else if (sig_exit) {
+         sig_exit = 0;
+         a_UIcmd_close_all_bw(NULL);
       }
    }
 

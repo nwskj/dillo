@@ -2,7 +2,7 @@
  * File: html.cc
  *
  * Copyright (C) 2005-2007 Jorge Arellano Cid <jcid@dillo.org>
- * Copyright (C) 2024 Rodrigo Arias Mallo <rodarima@gmail.com>
+ * Copyright (C) 2024-2025 Rodrigo Arias Mallo <rodarima@gmail.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -339,7 +339,7 @@ void a_Html_tag_set_align_attr(DilloHtml *html, const char *tag, int tagsize)
          v.textAlign = TEXT_ALIGN_STRING;
          if ((charattr = a_Html_get_attr(html, tag, tagsize, "char"))) {
             if (charattr[0] == 0)
-               /* TODO: ALIGN=" ", and even ALIGN="&32;" will reult in
+               /* TODO: ALIGN=" ", and even ALIGN="&32;" will result in
                 * an empty string (don't know whether the latter is
                 * correct, has to be clarified with the specs), so
                 * that for empty strings, " " is assumed. */
@@ -813,11 +813,21 @@ bool DilloHtml::HtmlLinkReceiver::click (Widget *widget, int link, int img,
       Html_set_link_coordinates(html, link, x, y);
 
       if (event->button == 1) {
-         a_UIcmd_open_url(bw, url);
+         if (event->state & CONTROL_MASK) {
+            if (prefs.middle_click_opens_new_tab) {
+               int focus = prefs.focus_new_tab ? 1 : 0;
+               if (event->state & SHIFT_MASK) focus = !focus;
+               a_UIcmd_open_url_nt(bw, url, focus);
+            } else {
+               a_UIcmd_open_url_nw(bw, url);
+            }
+         } else {
+            a_UIcmd_open_url(bw, url);
+         }
       } else if (event->button == 2) {
          if (prefs.middle_click_opens_new_tab) {
             int focus = prefs.focus_new_tab ? 1 : 0;
-            if (event->state == SHIFT_MASK) focus = !focus;
+            if (event->state & SHIFT_MASK) focus = !focus;
             a_UIcmd_open_url_nt(bw, url, focus);
          } else
             a_UIcmd_open_url_nw(bw, url);
@@ -2349,7 +2359,7 @@ static void Html_tag_close_map(DilloHtml *html)
 
       if (img) {
          // At this point, we know that img->ir represents an image
-         // widget. (Really? Is this assumtion safe?) Notice that the
+         // widget. (Really? Is this assumption safe?) Notice that the
          // order of the casts matters, because of multiple
          // inheritance.
          dw::Image *dwi = (dw::Image*)(dw::core::ImgRenderer*)img->img_rndr;
@@ -3903,7 +3913,7 @@ static void Html_parse_common_attrs(DilloHtml *html, char *tag, int tagsize)
    if (tagsize >= 8 &&        /* length of "<t id=i>" */
        (attrbuf = a_Html_get_attr(html, tag, tagsize, "id"))) {
       /* According to the SGML declaration of HTML 4, all NAME values
-       * occuring outside entities must be converted to uppercase
+       * occurring outside entities must be converted to uppercase
        * (this is what "NAMECASE GENERAL YES" says). But the HTML 4
        * spec states in Sec. 7.5.2 that anchor ids are case-sensitive.
        * So we don't do it and hope for better specs in the future ...
@@ -4014,6 +4024,17 @@ static void Html_display_listitem(DilloHtml *html)
       // unordered
       list_item->initWithWidget (new Bullet(), wordStyle);
    }
+}
+
+bool a_Html_should_display(DilloHtml *html)
+{
+   if (S_TOP(html)->display_none)
+      return false;
+
+   if (html->style()->display == DISPLAY_NONE)
+      return false;
+
+   return true;
 }
 
 /**
@@ -4290,7 +4311,7 @@ char *a_Html_get_attr_wdef(DilloHtml *html,
 }
 
 /**
- * Dispatch the apropriate function for 'Op'.
+ * Dispatch the appropriate function for 'Op'.
  * This function is a Cache client and gets called whenever new data arrives
  * @param Op      operation to perform.
  * @param CbData  a pointer to a DilloHtml structure

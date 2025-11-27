@@ -21,6 +21,14 @@ AC_ARG_WITH([jpeg-inc],
   [AS_HELP_STRING([--with-jpeg-inc=DIR], [Specify where to find libjpeg headers])],
   LIBJPEG_INCDIR=$withval)
 
+AC_ARG_WITH([mbedtls-lib],
+  [AS_HELP_STRING([--with-mbedtls-lib=DIR], [Specify where to find MbedTLS libraries])],
+  [MBEDTLS_LIBDIR=$withval])
+
+AC_ARG_WITH([mbedtls-inc],
+  [AS_HELP_STRING([--with-mbedtls-inc=DIR], [Specify where to find MbedTLS headers])],
+  [MBEDTLS_INCDIR=$withval])
+
 AC_ARG_ENABLE([efence],
   [AS_HELP_STRING([--enable-efence], [Try to compile and run with Electric Fence])],
   [enable_efence=$enableval],
@@ -37,9 +45,9 @@ AC_ARG_ENABLE([insure],
   [enable_insure=no])
 
 AC_ARG_ENABLE([ipv6],
-  [AS_HELP_STRING([--enable-ipv6], [Build with support for IPv6])],
+  [AS_HELP_STRING([--enable-ipv6], [Build with support for IPv6 (default: auto)])],
   [enable_ipv6=$enableval],
-  [enable_ipv6=no])
+  [enable_ipv6=auto])
 
 AC_ARG_ENABLE([cookies],
   [AS_HELP_STRING([--disable-cookies], [Dont compile support for cookies])],
@@ -76,11 +84,6 @@ AC_ARG_ENABLE([threaded-dns],
   [enable_threaded_dns=$enableval],
   [enable_threaded_dns=yes])
 
-AC_ARG_ENABLE([rtfl],
-  [AS_HELP_STRING([--enable-rtfl], [Print low-level RTFL messages for debugging the renderer (very large slowdown)])],
-  [enable_rtfl=$enableval],
-  [enable_rtfl=no])
-
 AC_ARG_ENABLE([xembed],
   [AS_HELP_STRING([--disable-xembed], [Disable support for X11 XEmbed])],
   [enable_xembed=$enableval],
@@ -107,6 +110,11 @@ AC_ARG_ENABLE([mbedtls],
   [enable_mbedtls=$enableval],
   [enable_mbedtls=yes])
 
+AC_ARG_ENABLE([brotli],
+  [AS_HELP_STRING([--disable-brotli], [Disable support for brotli encoding])],
+  [enable_brotli=$enableval],
+  [enable_brotli=yes])
+
 AC_ARG_WITH([ca-certs-file],
   [AS_HELP_STRING([--with-ca-certs-file=FILE], [Specify where to find a bundle of trusted CA certificates for TLS])],
   CA_CERTS_FILE=$withval)
@@ -115,11 +123,17 @@ AC_ARG_WITH([ca-certs-dir],
   [AS_HELP_STRING([--with-ca-certs-dir=DIR], [Specify where to find a directory containing trusted CA certificates for TLS])],
   CA_CERTS_DIR=$withval)
 
+dnl Developer options
 
 AC_ARG_ENABLE([html-tests],
-  [AS_HELP_STRING([--enable-html-tests], [Enable HTML tests (requires xvfb, xwd and imagemagick)])],
+  [AS_HELP_STRING([--enable-html-tests], [Enable HTML rendering tests, requires xvfb, xwd and imagemagick (for developers only)])],
   [enable_html_tests=$enableval],
   [enable_html_tests=no])
+
+AC_ARG_ENABLE([rtfl],
+  [AS_HELP_STRING([--enable-rtfl], [Print low-level RTFL messages for debugging the renderer. Adds very large slowdown (for developers only)])],
+  [enable_rtfl=$enableval],
+  [enable_rtfl=no])
 
 if test "x$enable_ssl" = "xno"; then
   AC_MSG_ERROR([The flag --disable-ssl is deprecated, use --disable-tls])
@@ -215,7 +229,7 @@ dnl Test for FLTK 1.3 library
 dnl -------------------------
 dnl
 dnl For debugging and to be user friendly
-AC_PATH_PROG(FLTK_CONFIG,fltk-config)
+AC_PATH_PROGS(FLTK_CONFIG,[fltk-config1.3 fltk-config])
 AC_MSG_CHECKING([FLTK 1.3])
 fltk_version="`$FLTK_CONFIG --version 2>/dev/null`"
 case $fltk_version in
@@ -329,6 +343,33 @@ if test "x$libz_ok" = xyes; then
   LIBZ_LIBS="-lz"
 else
   AC_MSG_ERROR(zlib must be installed!)
+fi
+
+dnl ---------------
+dnl Test for brotli
+dnl ---------------
+dnl
+if test "x$enable_brotli" = "xyes"; then
+  AC_CHECK_HEADER(brotli/decode.h, brotli_ok=yes, brotli_ok=no)
+
+  if test "x$brotli_ok" = "xyes"; then
+    old_libs="$LIBS"
+    AC_CHECK_LIB(brotlidec, BrotliDecoderVersion, brotli_ok=yes, brotli_ok=no)
+    LIBS="$old_libs"
+
+    if test "x$brotli_ok" = "xyes"; then
+      BROTLI_LIBS="-lbrotlidec"
+    else
+      AC_MSG_WARN([*** libbrotlidec not found. Disabling brotli encoding.***])
+    fi
+  else
+    AC_MSG_WARN([*** brotli/decode.h not found. Disabling brotli encoding.***])
+  fi
+
+fi
+
+if test "x$brotli_ok" = "xyes"; then
+  AC_DEFINE([ENABLE_BROTLI], [1], [Enable brotli encoding])
 fi
 
 dnl ---------------
@@ -451,23 +492,42 @@ if test "x$enable_tls" = "xyes"; then
   dnl Try to find mbedTLS if OpenSSL failed or is disabled
   if test "x$enable_mbedtls" = "xyes"; then
     if test "x$openssl_ok" != "xyes"; then
+
+      if test -n "$MBEDTLS_LIBDIR"; then
+        MBEDTLS_LDFLAGS="-L$MBEDTLS_LIBDIR"
+      fi
+      if test -n "$MBEDTLS_INCDIR"; then
+        MBEDTLS_CPPFLAGS="-I$MBEDTLS_INCDIR"
+      fi
+
+      old_cppflags="$CPPFLAGS"
+      CPPFLAGS="$CPPFLAGS $MBEDTLS_CPPFLAGS"
       dnl In mbed TLS 2.3.0, ssl.h needs platform.h but fails to include it.
       AC_CHECK_HEADER(mbedtls/ssl.h, mbedtls_ok=yes, mbedtls_ok=no, [#include <mbedtls/platform.h>])
+      CPPFLAGS="$old_cppflags"
 
       dnl If the headers are found, try to link with mbedTLS
       if test "x$mbedtls_ok" = "xyes"; then
         old_libs="$LIBS"
-        AC_CHECK_LIB(mbedtls, mbedtls_ssl_init, mbedtls_ok=yes, mbedtls_ok=no, -lmbedx509 -lmbedcrypto)
+        old_ldflags="$LDFLAGS"
+        LDFLAGS="$LDFLAGS $MBEDTLS_LDFLAGS"
+        AC_SEARCH_LIBS(mbedtls_ssl_init, [mbedtls-3 mbedtls], mbedtls_ok=yes, mbedtls_ok=no)
+        AC_SEARCH_LIBS(mbedtls_pk_get_name, [mbedcrypto-3 mbedcrypto], mbedcrypto_ok=yes, mbedcrypto_ok=no)
+        AC_SEARCH_LIBS(mbedtls_x509_crt_init, [mbedx509-3 mbedx509], mbedx509_ok=yes, mbedx509_ok=no)
+        LDFLAGS="$old_ldflags"
         LIBS="$old_libs"
       fi
 
       dnl If it went good, use it, otherwise disable TLS support
-      if test "x$mbedtls_ok" = "xyes"; then
+      if test "x$mbedtls_ok" = "xyes" && test "x$mbedcrypto_ok" = "xyes" && test "x$mbedx509_ok" = "xyes" ; then
         AC_MSG_NOTICE([Using mbedTLS as TLS library.])
         tls_impl="mbedTLS"
         AC_DEFINE([HAVE_MBEDTLS], [1], [mbedTLS works])
-        LIBSSL_LIBS="-lmbedtls -lmbedx509 -lmbedcrypto"
+        LIBSSL_LIBS="$ac_cv_search_mbedtls_ssl_init $ac_cv_search_mbedtls_pk_get_name $ac_cv_search_mbedtls_x509_crt_init"
+        LIBSSL_LDFLAGS="$MBEDTLS_LDFLAGS"
+        LIBSSL_CPPFLAGS="$MBEDTLS_CPPFLAGS"
       else
+        mbedtls_ok=no
         AC_MSG_NOTICE([Cannot find mbedTLS])
       fi
     fi
@@ -610,6 +670,34 @@ pthread_ok=yes, pthread_ok=no)
 esac
 fi
 
+dnl ------------
+dnl IPv6 support
+dnl ------------
+dnl
+html_tests_ok=no
+if test "x$enable_ipv6" = "xauto" ; then
+  dnl Detect support for IPv6 in libc
+  AC_MSG_CHECKING([for IPv6 support])
+  AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[
+#include <sys/socket.h>
+#include <netinet/in.h>
+]],[[
+struct sockaddr_in6 sa;
+size_t len = sizeof(struct sockaddr_in6);
+sa.sin6_family = AF_INET6;
+int fd;
+connect(fd, (struct sockaddr *)&sa, len);
+]])],
+  enable_ipv6=yes,
+  enable_ipv6=no)
+
+  AC_MSG_RESULT([$enable_ipv6])
+fi
+
+if test "x$enable_ipv6" = "xyes"; then
+  AC_DEFINE([ENABLE_IPV6], [1], [Enable IPv6 support])
+fi
+
 dnl ----------
 dnl HTML tests
 dnl ----------
@@ -648,9 +736,6 @@ dnl
 if test "x$enable_cookies" = "xno" ; then
   CFLAGS="$CFLAGS -DDISABLE_COOKIES"
   CXXFLAGS="$CXXFLAGS -DDISABLE_COOKIES"
-fi
-if test "x$enable_ipv6" = "xyes" ; then
-  CFLAGS="$CFLAGS -DENABLE_IPV6"
 fi
 if test "x$enable_efence" = "xyes" ; then
   LIBS="-lefence $LIBS"
@@ -708,7 +793,7 @@ dnl -----------
 dnl
 
 if eval "test x$GCC = xyes"; then
-  CXXFLAGS="$CXXFLAGS -Wall -W -Wno-unused-parameter -fno-rtti -fno-exceptions -pedantic -std=c++11 -D_POSIX_C_SOURCE=200112L"
+  CXXFLAGS="$CXXFLAGS -Wall -W -Wno-unused-parameter -fno-rtti -fno-exceptions -pedantic -D_POSIX_C_SOURCE=200112L"
 fi
 
 dnl ----------------------------------
@@ -742,7 +827,10 @@ AC_SUBST(LIBPNG_LIBS)
 AC_SUBST(LIBPNG_CFLAGS)
 AC_SUBST(LIBWEBP_LIBS)
 AC_SUBST(LIBZ_LIBS)
+AC_SUBST(BROTLI_LIBS)
 AC_SUBST(LIBSSL_LIBS)
+AC_SUBST(LIBSSL_LDFLAGS)
+AC_SUBST(LIBSSL_CPPFLAGS)
 AC_SUBST(LIBPTHREAD_LIBS)
 AC_SUBST(LIBPTHREAD_LDFLAGS)
 AC_SUBST(LIBFLTK_CXXFLAGS)
@@ -774,6 +862,11 @@ AC_CONFIG_FILES([
 AC_OUTPUT
 
 _AS_ECHO([])
+_AS_ECHO([Developer options:])
+_AS_ECHO([])
+_AS_ECHO([  RTFL enabled : ${enable_rtfl}])
+_AS_ECHO([  HTML tests   : ${html_tests_ok}])
+_AS_ECHO([])
 _AS_ECHO([Configuration summary:])
 _AS_ECHO([])
 _AS_ECHO([  CC      : ${CC}])
@@ -785,14 +878,15 @@ _AS_ECHO([  TLS enabled: ${tls_ok}])
 _AS_ECHO([  TLS library: ${tls_impl}])
 _AS_ECHO([  TLS flags  : ${LIBSSL_LIBS}])
 _AS_ECHO([])
+_AS_ECHO([Features:])
+_AS_ECHO([])
 _AS_ECHO([  Cookies enabled: ${enable_cookies}])
 _AS_ECHO([  XEmbed enabled : ${enable_xembed}])
-_AS_ECHO([  RTFL enabled   : ${enable_rtfl}])
 _AS_ECHO([  JPEG enabled   : ${jpeg_ok}])
 _AS_ECHO([  PNG enabled    : ${png_ok}])
 _AS_ECHO([  GIF enabled    : ${enable_gif}])
 _AS_ECHO([  SVG enabled    : ${enable_svg}])
-_AS_ECHO([  WEBP enabled   : ${enable_webp}])
-_AS_ECHO([])
-_AS_ECHO([  HTML tests     : ${html_tests_ok}])
+_AS_ECHO([  WEBP enabled   : ${webp_ok}])
+_AS_ECHO([  Brotli enabled : ${brotli_ok}])
+_AS_ECHO([  IPv6 enabled   : ${enable_ipv6}])
 _AS_ECHO([])

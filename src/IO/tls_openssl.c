@@ -8,7 +8,7 @@
  * (for the certificate hostname checking from wget)
  * Copyright (C) 2011 Benjamin Johnson <obeythepenguin@users.sourceforge.net>
  * (for the https code offered from dplus browser that formed the basis...)
- * Copyright (C) 2023-2024 Rodrigo Arias Mallo <rodarima@gmail.com>
+ * Copyright (C) 2023-2025 Rodrigo Arias Mallo <rodarima@gmail.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -215,6 +215,7 @@ static void Tls_load_certificates(void)
       "/usr/share/ssl/certs/ca-bundle.crt",
       "/usr/local/share/certs/ca-root.crt",
       "/etc/ssl/cert.pem",
+      "/etc/openssl/certs/ca-certificates.crt",
       CA_CERTS_FILE
    };
 
@@ -1069,6 +1070,8 @@ void a_Tls_openssl_reset_server_state(const DilloUrl *url)
  */
 static void Tls_close_by_key(int connkey)
 {
+   _MSG("Tls_close_by_key: connkey=%d\n", connkey);
+
    Conn_t *c;
 
    if ((c = a_Klist_get_data(conn_list, connkey))) {
@@ -1081,7 +1084,13 @@ static void Tls_close_by_key(int connkey)
          /* openssl 1.0.2f does not like shutdown being called during
           * handshake, resulting in ssl_undefined_function in the error queue.
           */
-         SSL_shutdown(c->ssl);
+         if (SSL_shutdown(c->ssl) < 0) {
+            /* Drain error queue before making more calls */
+            for (int e = ERR_get_error(); e; e = ERR_get_error()) {
+               MSG("SSL_shutdown() failed with %s for url: %s\n",
+                     ERR_error_string(e, NULL), URL_STR(c->url));
+            }
+         }
       } else {
          MSG("Tls_close_by_key: Avoiding SSL shutdown for: %s\n", URL_STR(c->url));
       }
@@ -1103,6 +1112,8 @@ static void Tls_connect(int fd, int connkey)
    int ret;
    bool_t ongoing = FALSE, failed = TRUE;
    Conn_t *conn;
+
+   _MSG("Tls_connect: fd=%d connkey=%d\n", fd, connkey);
 
    if (!(conn = a_Klist_get_data(conn_list, connkey))) {
       MSG("Tls_connect: conn for fd %d not valid\n", fd);
@@ -1233,6 +1244,8 @@ static void Tls_connect_cb(int fd, void *vconnkey)
  */
 void a_Tls_openssl_connect(int fd, const DilloUrl *url)
 {
+   _MSG("a_Tls_openssl_connect: fd=%d url=%s\n", fd, URL_STR(url));
+
    SSL *ssl;
    bool_t success = TRUE;
    int connkey = -1;

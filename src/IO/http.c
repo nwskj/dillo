@@ -2,7 +2,7 @@
  * File: http.c
  *
  * Copyright (C) 2000-2007 Jorge Arellano Cid <jcid@dillo.org>
- * Copyright (C) 2024 Rodrigo Arias Mallo <rodarima@gmail.com>
+ * Copyright (C) 2024-2025 Rodrigo Arias Mallo <rodarima@gmail.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -15,7 +15,7 @@
  */
 
 
-#include <config.h>
+#include "config.h"
 
 #include <ctype.h>              /* isdigit */
 #include <unistd.h>
@@ -413,7 +413,7 @@ static Dstr *Http_make_query_str(DilloWeb *web, bool_t use_proxy, bool_t use_tls
                     URL_QUERY(url));
    }
 
-   cookies = a_Cookies_get_query(url, web->requester);
+   cookies = a_Cookies_get_query(url, web->requester, web->flags & WEB_RootUrl);
    auth = a_Auth_get_auth_str(url, request_uri->str);
    referer = Http_get_referer(url);
    if (URL_FLAGS(url) & URL_Post) {
@@ -425,7 +425,11 @@ static Dstr *Http_make_query_str(DilloWeb *web, bool_t use_proxy, bool_t use_tls
          "User-Agent: %s\r\n"
          "Accept: %s\r\n"
          "%s" /* language */
-         "Accept-Encoding: gzip, deflate\r\n"
+         "Accept-Encoding: gzip, deflate"
+#ifdef ENABLE_BROTLI
+         ", br"
+#endif
+         "\r\n"
          "%s" /* auth */
          "DNT: 1\r\n"
          "%s" /* proxy auth */
@@ -449,7 +453,11 @@ static Dstr *Http_make_query_str(DilloWeb *web, bool_t use_proxy, bool_t use_tls
          "User-Agent: %s\r\n"
          "Accept: %s\r\n"
          "%s" /* language */
-         "Accept-Encoding: gzip, deflate\r\n"
+         "Accept-Encoding: gzip, deflate"
+#ifdef ENABLE_BROTLI
+	 ", br"
+#endif
+         "\r\n"
          "%s" /* auth */
          "DNT: 1\r\n"
          "%s" /* proxy auth */

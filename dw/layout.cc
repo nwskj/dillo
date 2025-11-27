@@ -2,7 +2,7 @@
  * Dillo Widget
  *
  * Copyright 2005-2007 Sebastian Geerken <sgeerken@dillo.org>
- * Copyright 2024 Rodrigo Arias Mallo <rodarima@gmail.com>
+ * Copyright 2024-2025 Rodrigo Arias Mallo <rodarima@gmail.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -355,7 +355,7 @@ void Layout::detachWidget (Widget *widget)
    // be detached, and check "layout != NULL" at relevant points.
 
    // Could be replaced by a virtual method in Widget, like getWidgetAtPoint,
-   // if performace were really a problem.
+   // if performance were really a problem.
 
    widget->layout = NULL;
    Iterator *it =
@@ -969,6 +969,11 @@ void Layout::resizeIdle ()
                DBG_OBJ_SET_SYM ("canvasHeightGreater",
                                 canvasHeightGreater ? "true" : "false");
                containerSizeChanged ();
+
+               // We need to place the top level widget at an offset, so
+               // be sure that we allocate it with the new allocation.x
+               if (view->getScrollbarOnLeft())
+                  topLevel->setFlags(Widget::NEEDS_ALLOCATE);
             }
 
             // Set viewport sizes.

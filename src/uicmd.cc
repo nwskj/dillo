@@ -2,7 +2,7 @@
  * File: uicmd.cc
  *
  * Copyright (C) 2005-2011 Jorge Arellano Cid <jcid@dillo.org>
- * Copyright (C) 2024 Rodrigo Arias Mallo <rodarima@gmail.com>
+ * Copyright (C) 2024-2025 Rodrigo Arias Mallo <rodarima@gmail.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -58,7 +58,7 @@
 // Handy macro
 #define BW2UI(bw) ((UI*)((bw)->ui))
 
-// Platform idependent part
+// Platform independent part
 using namespace dw::core;
 // FLTK related
 using namespace dw::fltk;
@@ -189,6 +189,7 @@ public:
    Fl_Wizard *wizard(void) { return Wizard; }
    int num_tabs() { return (Pack ? Pack->children() : 0); }
    void switch_tab(CustTabButton *cbtn);
+   void switch_tab(int index);
    void prev_tab(void);
    void next_tab(void);
    void set_tab_label(UI *ui, const char *title);
@@ -484,6 +485,15 @@ void CustTabs::next_tab()
 
    if ((idx = get_btn_idx((UI*)Wizard->value())) != -1)
       switch_tab((CustTabButton*)Pack->child((idx+1<num_tabs()) ? idx+1 : 0));
+}
+
+/**
+ * Make index tab the active one, starting from 0.
+ */
+void CustTabs::switch_tab(int index)
+{
+   if (index >= 0 && index < num_tabs())
+      switch_tab((CustTabButton*)Pack->child(index));
 }
 
 /**
@@ -868,6 +878,14 @@ void a_UIcmd_back(void *vbw)
 }
 
 /*
+ * Send the browser back to previous page in a new tab
+ */
+void a_UIcmd_back_nt(void *vbw)
+{
+   a_Nav_back_nt((BrowserWindow*)vbw);
+}
+
+/*
  * Popup the navigation menu of the Back button
  */
 void a_UIcmd_back_popup(void *vbw, int x, int y)
@@ -884,6 +902,14 @@ void a_UIcmd_forw(void *vbw)
 }
 
 /*
+ * Send the browser to next page in the history list in new tab
+ */
+void a_UIcmd_forw_nt(void *vbw)
+{
+   a_Nav_forw_nt((BrowserWindow*)vbw);
+}
+
+/*
  * Popup the navigation menu of the Forward button
  */
 void a_UIcmd_forw_popup(void *vbw, int x, int y)
@@ -894,9 +920,12 @@ void a_UIcmd_forw_popup(void *vbw, int x, int y)
 /*
  * Send the browser to home URL
  */
-void a_UIcmd_home(void *vbw)
+void a_UIcmd_home(void *vbw, int nt)
 {
-   a_UIcmd_open_url((BrowserWindow*)vbw, prefs.home);
+   if (nt)
+      a_UIcmd_open_url_nt((BrowserWindow*)vbw, prefs.home, 1);
+   else
+      a_UIcmd_open_url((BrowserWindow*)vbw, prefs.home);
 }
 
 /*
@@ -934,6 +963,16 @@ void a_UIcmd_repush(void *vbw)
 void a_UIcmd_redirection0(void *vbw, const DilloUrl *url)
 {
    a_Nav_redirection0((BrowserWindow*)vbw, url);
+}
+
+/*
+ * Copy selection to clipboard
+ */
+void a_UIcmd_copy(void *vbw)
+{
+   BrowserWindow *bw = (BrowserWindow*) vbw;
+   Layout *layout = (Layout*)bw->render_layout;
+   layout->copyCurrentSelection(1);
 }
 
 /*
@@ -1072,10 +1111,10 @@ static int UIcmd_save_file_check(const char *name)
 /*
  * Save a URL
  */
-static void UIcmd_save(BrowserWindow *bw, const DilloUrl *url,
+static void UIcmd_save(BrowserWindow *bw, const DilloUrl *url, char *filename,
                        const char *title)
 {
-   char *SuggestedName = UIcmd_make_save_filename(url);
+   char *SuggestedName = filename ? filename : UIcmd_make_save_filename(url);
 
    while (1) {
       const char *name = a_Dialog_save_file(title, NULL, SuggestedName);
@@ -1113,7 +1152,7 @@ void a_UIcmd_save(void *vbw)
    const DilloUrl *url = a_History_get_url(NAV_TOP_UIDX(bw));
 
    if (url) {
-      UIcmd_save(bw, url, "Save Page as File");
+      UIcmd_save(bw, url, NULL, "Save Page as File");
    }
 }
 
@@ -1232,18 +1271,23 @@ const char *a_UIcmd_get_passwd(const char *user)
 /*
  * Save link URL
  */
-void a_UIcmd_save_link(BrowserWindow *bw, const DilloUrl *url)
+void a_UIcmd_save_link(BrowserWindow *bw, const DilloUrl *url, char *filename)
 {
-   UIcmd_save(bw, url, "Dillo: Save Link as File");
+   UIcmd_save(bw, url, filename, "Dillo: Save Link as File");
 }
 
 /*
  * Request the bookmarks page
  */
-void a_UIcmd_book(void *vbw)
+void a_UIcmd_book(void *vbw, int nt)
 {
    DilloUrl *url = a_Url_new("dpi:/bm/", NULL);
-   a_UIcmd_open_url((BrowserWindow*)vbw, url);
+
+   if (nt)
+      a_UIcmd_open_url_nt((BrowserWindow*)vbw, url, 1);
+   else
+      a_UIcmd_open_url((BrowserWindow*)vbw, url);
+
    a_Url_free(url);
 }
 
@@ -1301,12 +1345,14 @@ void a_UIcmd_file_popup(void *vbw, void *v_wid)
 }
 
 /*
- * Copy url string to paste buffer
+ * Copy url string to paste buffer.
+ *
+ * For destination use: 0=primary, 1=clipboard, 2=both
  */
-void a_UIcmd_copy_urlstr(BrowserWindow *bw, const char *urlstr)
+void a_UIcmd_copy_urlstr(BrowserWindow *bw, const char *urlstr, int destination)
 {
    Layout *layout = (Layout*)bw->render_layout;
-   layout->copySelection(urlstr);
+   layout->copySelection(urlstr, destination);
 }
 
 /*
@@ -1656,3 +1702,14 @@ void a_UIcmd_focus_location(void *vbw)
    BW2UI(bw)->focus_location();
 }
 
+/*
+ * Focus the tab at index, starting from 0.
+ */
+void a_UIcmd_focus_tab(void *vbw, int index)
+{
+   BrowserWindow *bw = (BrowserWindow*)vbw;
+   UI *ui = BW2UI(bw);
+   CustTabs *tabs = ui->tabs();
+   if (tabs)
+      tabs->switch_tab(index);
+}

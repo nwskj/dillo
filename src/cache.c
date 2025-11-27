@@ -2,7 +2,7 @@
  * File: cache.c
  *
  * Copyright 2000-2007 Jorge Arellano Cid <jcid@dillo.org>
- * Copyright 2024 Rodrigo Arias Mallo <rodarima@gmail.com>
+ * Copyright 2024-2025 Rodrigo Arias Mallo <rodarima@gmail.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -36,6 +36,7 @@
 #include "domain.h"
 #include "timeout.hh"
 #include "uicmd.hh"
+#include "dlib/dlib.h"
 
 /** Maximum initial size for the automatically-growing data buffer */
 #define MAX_INIT_BUF  1024*1024
@@ -52,6 +53,7 @@ typedef struct {
    char *TypeHdr;            /**< MIME type string as from the HTTP Header */
    char *TypeMeta;           /**< MIME type string from META HTTP-EQUIV */
    char *TypeNorm;           /**< MIME type string normalized */
+   char *ContentDisposition; /**< Content-Disposition header */
    Dstr *Header;             /**< HTTP header */
    const DilloUrl *Location; /**< New URI for redirects */
    Dlist *Auth;              /**< Authentication fields */
@@ -64,6 +66,7 @@ typedef struct {
    int ExpectedSize;         /**< Goal size of the HTTP transfer (0 if unknown)*/
    int TransferSize;         /**< Actual length of the HTTP transfer */
    uint_t Flags;             /**< See Flag Defines in cache.h */
+   int Hits;                 /**< Counter of hits for the entry */
 } CacheEntry_t;
 
 
@@ -89,7 +92,7 @@ static uint_t DelayedQueueIdleId = 0;
 static CacheEntry_t *Cache_process_queue(CacheEntry_t *entry);
 static void Cache_delayed_process_queue(CacheEntry_t *entry);
 static void Cache_auth_entry(CacheEntry_t *entry, BrowserWindow *bw);
-static void Cache_entry_inject(const DilloUrl *Url, Dstr *data_ds);
+static Dstr *Cache_data(CacheEntry_t *entry);
 
 /**
  * Determine if two cache entries are equal (used by CachedURLs)
@@ -125,7 +128,7 @@ void a_Cache_init(void)
    {
       DilloUrl *url = a_Url_new("about:splash", NULL);
       Dstr *ds = dStr_new(AboutSplash);
-      Cache_entry_inject(url, ds);
+      a_Cache_entry_inject(url, ds);
       dStr_free(ds, 1);
       a_Url_free(url);
    }
@@ -197,6 +200,7 @@ static void Cache_entry_init(CacheEntry_t *NewEntry, const DilloUrl *Url)
    NewEntry->TypeHdr = NULL;
    NewEntry->TypeMeta = NULL;
    NewEntry->TypeNorm = NULL;
+   NewEntry->ContentDisposition = NULL;
    NewEntry->Header = dStr_new("");
    NewEntry->Location = NULL;
    NewEntry->Auth = NULL;
@@ -209,6 +213,7 @@ static void Cache_entry_init(CacheEntry_t *NewEntry, const DilloUrl *Url)
    NewEntry->ExpectedSize = 0;
    NewEntry->TransferSize = 0;
    NewEntry->Flags = CA_IsEmpty | CA_InProgress | CA_KeepAlive;
+   NewEntry->Hits = 0;
 }
 
 /**
@@ -263,10 +268,26 @@ static CacheEntry_t *Cache_entry_add(const DilloUrl *Url)
 }
 
 /**
+ * Compute the actual size occupied by a cache entry.
+ *
+ * The size is computed from the allocated buffer. */
+static int Cache_bufsize(CacheEntry_t *e)
+{
+   Dstr *buf = Cache_data(e);
+   if (buf)
+      return buf->len;
+   else
+      return 0;
+}
+
+/**
  * Inject full page content directly into the cache.
  * Used for "about:splash". May be used for "about:cache" too.
+ *
+ * The @param data_ds buffer is copied into the entry buffer, so it is
+ * responsibility of the caller to free it.
  */
-static void Cache_entry_inject(const DilloUrl *Url, Dstr *data_ds)
+void a_Cache_entry_inject(const DilloUrl *Url, Dstr *data_ds)
 {
    CacheEntry_t *entry;
 
@@ -303,6 +324,7 @@ static void Cache_entry_free(CacheEntry_t *entry)
    dFree(entry->TypeHdr);
    dFree(entry->TypeMeta);
    dFree(entry->TypeNorm);
+   dFree(entry->ContentDisposition);
    dStr_free(entry->Header, TRUE);
    a_Url_free((DilloUrl *)entry->Location);
    Cache_auth_free(entry->Auth);
@@ -361,6 +383,67 @@ void a_Cache_entry_remove_by_url(DilloUrl *url)
 
 /* Misc. operations ------------------------------------------------------- */
 
+static Dstr *Cache_stats(void)
+{
+   float totalKB = 0.0f;
+
+   Dstr *s = dStr_new(
+      "<!DOCTYPE HTML>\n"
+      "<html>\n"
+      "<head><title>Dillo Cache</title></head>\n"
+      "<body>\n");
+
+   int n = dList_length(CachedURLs);
+   dStr_sprintfa(s, "<h1>Cached URLs (%d)</h1>\n", n);
+
+   dStr_append(s, "<table>\n");
+   dStr_append(s, "<tr>\n");
+   dStr_append(s, "<th>Hits</th>\n");
+   dStr_append(s, "<th>Size</th>\n");
+   dStr_append(s, "<th>URL</th>\n");
+   dStr_append(s, "</tr>\n");
+   for (int i = 0; i < n; i++) {
+      CacheEntry_t *e = dList_nth_data(CachedURLs, i);
+      float sizeKB = Cache_bufsize(e) / 1024.0f;
+      const char *url = URL_STR(e->Url);
+      dStr_append(s, "<tr>\n");
+      dStr_sprintfa(s, "<td style='text-align:right'>%d</td>\n", e->Hits);
+      dStr_sprintfa(s, "<td style='text-align:right'>%.2f KiB</td>\n", sizeKB);
+      dStr_sprintfa(s, "<td><a href='%s'>", url);
+      dStr_shorten(s, url, 60);
+      dStr_append(s, "</a></td>\n");
+      dStr_append(s, "</tr>\n");
+      totalKB += sizeKB;
+   }
+   dStr_append(s, "</table>\n");
+   dStr_sprintfa(s, "<p>Total cached: %.2f MiB</p>\n", totalKB / 1024.0f);
+   dStr_append(s,
+      "</body>\n"
+      "</html>\n");
+
+   return s;
+}
+
+static int Cache_internal_url(CacheEntry_t *entry)
+{
+   Dstr *s = NULL;
+
+   if (strcmp(URL_PATH(entry->Url), "cache") == 0) {
+      s = Cache_stats();
+   } else if (strcmp(URL_PATH(entry->Url), "dicache") == 0) {
+      s = a_Dicache_stats();
+   }
+
+   if (s != NULL) {
+      a_Cache_entry_inject(entry->Url, s);
+      dStr_free(s, 1);
+      /* Remove InternalUrl */
+      entry->Flags = CA_GotHeader + CA_GotLength;
+   }
+
+   return 0;
+}
+
 /**
  * Try finding the url in the cache. If it hits, send the cache contents
  * from there. If it misses, set up a new connection.
@@ -379,6 +462,13 @@ int a_Cache_open_url(void *web, CA_Callback_t Call, void *CbData)
    CacheEntry_t *entry;
    DilloWeb *Web = web;
    DilloUrl *Url = Web->url;
+   int isInternal = 0;
+
+   if (dStrAsciiCasecmp(URL_SCHEME(Url), "about") == 0) {
+      _MSG("got internal URL: %s\n", URL_STR(Url));
+      isInternal = 1;
+      Cache_entry_remove(NULL, Url);
+   }
 
    if (URL_FLAGS(Url) & URL_E2EQuery) {
       /* remove current entry */
@@ -386,15 +476,27 @@ int a_Cache_open_url(void *web, CA_Callback_t Call, void *CbData)
    }
 
    if ((entry = Cache_entry_search(Url))) {
+      _MSG("serving cached entry: %s\n", URL_STR(Url));
       /* URL is cached: feed our client with cached data */
       ClientKey = Cache_client_enqueue(entry->Url, Web, Call, CbData);
       Cache_delayed_process_queue(entry);
+      entry->Hits++;
 
    } else {
+      _MSG("serving new entry: %s\n", URL_STR(Url));
       /* URL not cached: create an entry, send our client to the queue,
        * and open a new connection */
       entry = Cache_entry_add(Url);
-      ClientKey = Cache_client_enqueue(entry->Url, Web, Call, CbData);
+
+      /* URL is an internal call, populate */
+      if (isInternal) {
+         _MSG("handling internal: %s\n", URL_STR(Url));
+         Cache_internal_url(entry);
+         ClientKey = Cache_client_enqueue(entry->Url, Web, Call, CbData);
+         Cache_delayed_process_queue(entry);
+      } else {
+         ClientKey = Cache_client_enqueue(entry->Url, Web, Call, CbData);
+      }
    }
 
    return ClientKey;
@@ -770,11 +872,23 @@ static void Cache_parse_header(CacheEntry_t *entry)
          if (client->Url == entry->Url) {
             DilloWeb *web = client->Web;
 
-            if (!web->requester ||
-                a_Url_same_organization(entry->Url, web->requester)) {
-               /* If cookies are third party, don't even consider them. */
-               char *server_date = Cache_parse_field(header, "Date");
+            /* Only set cookies if any of:
+             * - User made request (requester == NULL)
+             * - Is a redirect for the root url (safe)
+             * - Same organization (first party cookie)
+             *
+             * Always block third party cookies from images or css files which
+             * are commonly used to track users (those that don't have the
+             * WEB_RootUrl flag and come from a different organization).
+             * https://en.wikipedia.org/wiki/Third-party_cookies
+             * https://support.mozilla.org/en-US/kb/third-party-trackers
+             */
+            int safe_redirect =
+               entry->Flags & CA_Redirect && web->flags & WEB_RootUrl;
 
+            if (!web->requester || safe_redirect ||
+                a_Url_same_organization(entry->Url, web->requester)) {
+               char *server_date = Cache_parse_field(header, "Date");
                a_Cookies_set(Cookies, entry->Url, server_date);
                dFree(server_date);
                break;
@@ -814,6 +928,9 @@ static void Cache_parse_header(CacheEntry_t *entry)
       _MSG("TypeMeta {%s}\n", entry->TypeMeta);
       dFree(Type);
    }
+
+   entry->ContentDisposition = Cache_parse_field(header, "Content-Disposition");
+
    Cache_ref_data(entry);
 }
 
@@ -1019,8 +1136,7 @@ static int Cache_redirect(CacheEntry_t *entry, int Flags, BrowserWindow *bw)
        (entry->Flags & CA_ForceRedirect || entry->Flags & CA_TempRedirect ||
         !entry->Data->len || entry->Data->len < 1024)) {
 
-      _MSG(">>>> Redirect from: %s\n to %s <<<<\n",
-           URL_STR_(entry->Url), URL_STR_(entry->Location));
+      MSG("Redirect to: %s\n", URL_STR_(entry->Location));
       _MSG("%s", entry->Header->str);
 
       if (Flags & WEB_RootUrl) {
@@ -1124,6 +1240,7 @@ static void Cache_null_client(int Op, CacheClient_t *Client)
 typedef struct {
    BrowserWindow *bw;
    DilloUrl *url;
+   char* filename;
 } Cache_savelink_t;
 
 /**
@@ -1134,7 +1251,7 @@ static void Cache_savelink_cb(void *vdata)
 {
    Cache_savelink_t *data = (Cache_savelink_t*) vdata;
 
-   a_UIcmd_save_link(data->bw, data->url);
+   a_UIcmd_save_link(data->bw, data->url, data->filename);
    a_Url_free(data->url);
    dFree(data);
 }
@@ -1185,6 +1302,8 @@ static CacheEntry_t *Cache_process_queue(CacheEntry_t *entry)
    bool_t AbortEntry = FALSE;
    bool_t OfferDownload = FALSE;
    bool_t TypeMismatch = FALSE;
+   char *dtype = NULL;
+   char *dfilename = NULL;
 
    if (Busy)
       MSG_ERR("FATAL!: >>>> Cache_process_queue Caught busy!!! <<<<\n");
@@ -1213,6 +1332,11 @@ static CacheEntry_t *Cache_process_queue(CacheEntry_t *entry)
          Client_bw = ClientWeb->bw;  /* 'bw' in a local var */
 
          if (ClientWeb->flags & WEB_RootUrl) {
+            /* Only parse Content-Disposition on root URLs */
+            if (entry->ContentDisposition) {
+               a_Misc_parse_content_disposition(entry->ContentDisposition,
+                     &dtype, &dfilename);
+            }
             if (!(entry->Flags & CA_MsgErased)) {
                /* clear the "expecting for reply..." message */
                a_UIcmd_set_msg(Client_bw, "");
@@ -1269,6 +1393,8 @@ static CacheEntry_t *Cache_process_queue(CacheEntry_t *entry)
                          * connection and to keep a failed-resource flag in
                          * the cache entry. */
                      }
+                  } else if (dtype && dStrnAsciiCasecmp(dtype, "inline", 6) != 0) {
+                     AbortEntry = OfferDownload = TRUE;
                   }
                }
                if (AbortEntry) {
@@ -1338,6 +1464,7 @@ static CacheEntry_t *Cache_process_queue(CacheEntry_t *entry)
             Cache_savelink_t *data = dNew(Cache_savelink_t, 1);
             data->bw = Client_bw;
             data->url = a_Url_dup(url);
+            data->filename = dStrdup(dfilename);
             a_Timeout_add(0.0, Cache_savelink_cb, data);
          }
       }
@@ -1345,6 +1472,8 @@ static CacheEntry_t *Cache_process_queue(CacheEntry_t *entry)
    } else if (entry->Auth && !(entry->Flags & CA_InProgress)) {
       Cache_auth_entry(entry, Client_bw);
    }
+
+   dFree(dtype); dFree(dfilename);
 
    /* Trigger cleanup when there are no cache clients */
    if (dList_length(ClientQueue) == 0) {

@@ -2,7 +2,7 @@
  * File: ui.cc
  *
  * Copyright (C) 2005-2007 Jorge Arellano Cid <jcid@dillo.org>
- * Copyright (C) 2024 Rodrigo Arias Mallo <rodarima@gmail.com>
+ * Copyright (C) 2024-2025 Rodrigo Arias Mallo <rodarima@gmail.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -35,6 +35,13 @@
 #include "uicmd.hh"
 #include "history.h"
 #include "nav.h"
+
+/* FLTK versions prior to 1.3.10 didn't define back or forward buttons.
+ * They are now mapped to 4 and 5, but the raw values for X11 are 8 and 9. */
+#if (FL_MAJOR_VERSION == 1 && FL_MINOR_VERSION == 3 && FL_PATCH_VERSION < 10)
+#define FL_BACK_MOUSE    8
+#define FL_FORWARD_MOUSE 9
+#endif
 
 struct iconset {
    Fl_Image *ImgMeterOK, *ImgMeterBug,
@@ -90,13 +97,26 @@ static struct iconset *icons = &standard_icons;
 
 //----------------------------------------------------------------------------
 
+#define DILLO_INPUTBOX (Fl_Boxtype) (FL_FREE_BOXTYPE + 1)
+
 /**
  * Used to avoid certain shortcuts in the location bar
  */
 class CustInput : public TipWinInput {
 public:
+   static const int margin_x = 3;
    CustInput (int x, int y, int w, int h, const char* l=0) :
-      TipWinInput(x,y,w,h,l) {};
+      TipWinInput(x,y,w,h,l) {
+         /* Increase the margin of the current box by making a new clone
+          * of the current box with extra margin on dx. */
+         Fl_Boxtype b = box();
+         Fl::set_boxtype(DILLO_INPUTBOX, Fl::get_boxtype(b),
+               Fl::box_dx(b) + margin_x,
+               Fl::box_dy(b),
+               Fl::box_dw(b) + margin_x,
+               Fl::box_dh(b));
+         box(DILLO_INPUTBOX);
+      }
    virtual int handle(int e);
 };
 
@@ -127,8 +147,8 @@ int CustInput::handle(int e)
             return 0;
          }
       } else if (modifier == FL_CTRL) {
-         if (k == 'a' || k == 'e') {
-            position(k == 'a' ? 0 : size());
+         if (k == 'e') {
+            position(size());
             return 1;
          } else if (k == 'k') {
             cut(position(), size());
@@ -136,7 +156,7 @@ int CustInput::handle(int e)
          } else if (k == 'd') {
             cut(position(), position()+1);
             return 1;
-         } else if (k == 'l') {
+         } else if (k == 'a' || k == 'l') {
             // Make text selected when already focused.
             position(size(), 0);
             return 1;
@@ -312,6 +332,8 @@ static void b1_cb(Fl_Widget *wid, void *cb_data)
    case UI_BACK:
       if (b == FL_LEFT_MOUSE) {
          a_UIcmd_back(a_UIcmd_get_bw_by_widget(wid));
+      } else if (b == FL_MIDDLE_MOUSE) {
+         a_UIcmd_back_nt(a_UIcmd_get_bw_by_widget(wid));
       } else if (b == FL_RIGHT_MOUSE) {
          a_UIcmd_back_popup(a_UIcmd_get_bw_by_widget(wid), wid->x(),
                             wid->y() + wid->h());
@@ -320,6 +342,8 @@ static void b1_cb(Fl_Widget *wid, void *cb_data)
    case UI_FORW:
       if (b == FL_LEFT_MOUSE) {
          a_UIcmd_forw(a_UIcmd_get_bw_by_widget(wid));
+      } else if (b == FL_MIDDLE_MOUSE) {
+         a_UIcmd_forw_nt(a_UIcmd_get_bw_by_widget(wid));
       } else if (b == FL_RIGHT_MOUSE) {
          a_UIcmd_forw_popup(a_UIcmd_get_bw_by_widget(wid), wid->x(),
                             wid->y() + wid->h());
@@ -327,7 +351,9 @@ static void b1_cb(Fl_Widget *wid, void *cb_data)
       break;
    case UI_HOME:
       if (b == FL_LEFT_MOUSE) {
-         a_UIcmd_home(a_UIcmd_get_bw_by_widget(wid));
+         a_UIcmd_home(a_UIcmd_get_bw_by_widget(wid), 0);
+      } else if (b == FL_MIDDLE_MOUSE) {
+         a_UIcmd_home(a_UIcmd_get_bw_by_widget(wid), 1);
       }
       break;
    case UI_RELOAD:
@@ -347,7 +373,9 @@ static void b1_cb(Fl_Widget *wid, void *cb_data)
       break;
    case UI_BOOK:
       if (b == FL_LEFT_MOUSE) {
-         a_UIcmd_book(a_UIcmd_get_bw_by_widget(wid));
+         a_UIcmd_book(a_UIcmd_get_bw_by_widget(wid), 0);
+      } else if (b == FL_MIDDLE_MOUSE) {
+         a_UIcmd_book(a_UIcmd_get_bw_by_widget(wid), 1);
       }
       break;
    case UI_TOOLS:
@@ -436,11 +464,11 @@ void UI::make_toolbar(int tw, int th)
 
    Back->set_tooltip("Previous page");
    Forw->set_tooltip("Next page");
-   Home->set_tooltip("Go to the Home page");
+   Home->set_tooltip("Go to the Home page\nMiddle-click for new tab.");
    Reload->set_tooltip("Reload");
    Save->set_tooltip("Save this page");
    Stop->set_tooltip("Stop loading");
-   Bookmarks->set_tooltip("View bookmarks");
+   Bookmarks->set_tooltip("View bookmarks\nMiddle-click for new tab.");
    Tools->set_tooltip("Settings");
 }
 
@@ -738,6 +766,9 @@ int UI::handle(int event)
       } else if (cmd == KEYS_FORWARD) {
          a_UIcmd_forw(a_UIcmd_get_bw_by_widget(this));
          ret = 1;
+      } else if (cmd == KEYS_COPY) {
+         a_UIcmd_copy(a_UIcmd_get_bw_by_widget(this));
+         ret = 1;
       } else if (cmd == KEYS_ZOOM_IN) {
          a_UIcmd_zoom_in(a_UIcmd_get_bw_by_widget(this));
          ret = 1;
@@ -748,7 +779,7 @@ int UI::handle(int event)
          a_UIcmd_zoom_reset(a_UIcmd_get_bw_by_widget(this));
          ret = 1;
       } else if (cmd == KEYS_BOOKMARKS) {
-         a_UIcmd_book(a_UIcmd_get_bw_by_widget(this));
+         a_UIcmd_book(a_UIcmd_get_bw_by_widget(this), 0);
          ret = 1;
       } else if (cmd == KEYS_FIND) {
          findbar_toggle(1);
@@ -768,7 +799,7 @@ int UI::handle(int event)
          a_UIcmd_open_file(a_UIcmd_get_bw_by_widget(this));
          ret = 1;
       } else if (cmd == KEYS_HOME) {
-         a_UIcmd_home(a_UIcmd_get_bw_by_widget(this));
+         a_UIcmd_home(a_UIcmd_get_bw_by_widget(this), 0);
          ret = 1;
       } else if (cmd == KEYS_RELOAD) {
          a_UIcmd_reload(a_UIcmd_get_bw_by_widget(this));
@@ -787,12 +818,26 @@ int UI::handle(int event)
          const DilloUrl *url = a_History_get_url(NAV_TOP_UIDX(bw));
          a_UIcmd_view_page_source(bw, url);
          ret = 1;
+      } else if (cmd >= KEYS_FOCUS_TAB1 && cmd <= KEYS_FOCUS_TAB10) {
+         int index = cmd - KEYS_FOCUS_TAB1; /* zero-based index */
+         a_UIcmd_focus_tab(a_UIcmd_get_bw_by_widget(this), index);
+         ret = 1;
       }
    } else if (event == FL_RELEASE) {
       if (Fl::event_button() == FL_MIDDLE_MOUSE &&
           prefs.middle_click_drags_page == 0) {
          /* nobody claimed the event; try paste */
          paste_url();
+         ret = 1;
+      }
+   } else if (event == FL_PUSH) {
+      BrowserWindow *bw = a_UIcmd_get_bw_by_widget(this);
+      _MSG("pressed button %d\n", Fl::event_button());
+      if (Fl::event_button() == FL_BACK_MOUSE) {
+         a_UIcmd_back(bw);
+         ret = 1;
+      } else if (Fl::event_button() == FL_FORWARD_MOUSE) {
+         a_UIcmd_forw(bw);
          ret = 1;
       }
    }
