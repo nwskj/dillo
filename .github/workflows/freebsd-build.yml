@@ -1,9 +1,9 @@
-name: CI (Build & Upload)
+name: CI
 
 on:
   pull_request:
   push:
-    branches: main
+    branches: master
 
 jobs:
   ubuntu-latest-html-tests:
@@ -16,6 +16,7 @@ jobs:
       run: sudo apt update
     - name: Install dependencies
       run: sudo apt install -y libfltk1.3-dev libssl-dev libpng-dev libjpeg-dev libwebp-dev libbrotli-dev xvfb x11-apps x11-utils imagemagick
+
     - name: autogen
       run: ./autogen.sh
     - name: Make install dir
@@ -26,17 +27,42 @@ jobs:
       run: cd build && make
     - name: make install
       run: cd build && make install
-    - name: Package build artifacts
+    - name: Copy config to .dillo
       run: |
-        cd install
-        tar -czf dillo-ubuntu-latest-html-tests.tar.gz *
-    - name: Upload artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: dillo-ubuntu-latest-html-tests
-        path: install/dillo-ubuntu-latest-html-tests.tar.gz
-        retention-days: 30
-
+        mkdir -p ~/.dillo/
+        cp install/etc/dillo/* ~/.dillo/
+    - name: make check
+      run: |
+        export DILLOBIN=$(readlink -f install/bin/dillo)
+        cd build && make check || (cat test/html/test-suite.log; false)
+        export DILLOBIN=
+    - name: Check release fits in a floppy disk of 1.44 MB
+      run: |
+        cd build
+        make dist-gzip
+        size=$(stat -c %s dillo-*.tar.gz)
+        floppy=$((1474560 - 32*1024)) # Leave room for FAT table
+        echo "Floppy occupation: $(($size * 100 / $floppy)) %"
+        if [ $size -lt $floppy ]; then
+          echo 'OK: Fits in floopy disk'
+        else
+          echo "FAIL: Release size too big: $size / $floppy"
+          exit 1
+        fi
+    - name: make distcheck (with HTML tests)
+      run: |
+        export DILLOBIN=
+        mkdir build-distcheck install-distcheck
+        cd build-distcheck && ../configure --prefix=$(readlink -f ../install-distcheck) --enable-html-tests
+        make distcheck DISTCHECK_CONFIGURE_FLAGS=--enable-html-tests
+#   - name: Remove pipes
+#     run: find test/html -type p -delete || true
+#   - name: Archive production artifacts
+#     uses: actions/upload-artifact@v3
+#     with:
+#       name: upload-html-test-results
+#       path: |
+#         build/test/html
   ubuntu-latest-memory-leaks:
     runs-on: ubuntu-latest
     steps:
@@ -57,17 +83,15 @@ jobs:
       run: cd build && make
     - name: make install
       run: cd build && make install
-    - name: Package build artifacts
+    - name: Copy config to .dillo
       run: |
-        cd install
-        tar -czf dillo-ubuntu-latest-memory-leaks.tar.gz *
-    - name: Upload artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: dillo-ubuntu-latest-memory-leaks
-        path: install/dillo-ubuntu-latest-memory-leaks.tar.gz
-        retention-days: 30
-
+        mkdir -p ~/.dillo/
+        cp install/etc/dillo/* ~/.dillo/
+    - name: make check
+      run: |
+        export DILLOBIN=$(readlink -f install/bin/dillo)
+        cd build && make check || (cat test/html/test-suite.log; false)
+        export DILLOBIN=
   ubuntu-latest-no-tls:
     needs: ubuntu-latest-html-tests
     runs-on: ubuntu-latest
@@ -85,18 +109,10 @@ jobs:
       run: ./configure --disable-tls
     - name: make
       run: make
-    - name: Package build artifacts
-      run: |
-        mkdir -p dillo-no-tls
-        cp -r src/.libs dillo-no-tls/  # 复制编译后的二进制文件
-        tar -czf dillo-ubuntu-latest-no-tls.tar.gz dillo-no-tls
-    - name: Upload artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: dillo-ubuntu-latest-no-tls
-        path: dillo-ubuntu-latest-no-tls.tar.gz
-        retention-days: 30
-
+    - name: make check
+      run: make check
+    - name: make distcheck
+      run: make distcheck
   ubuntu-latest-mbedtls2:
     needs: ubuntu-latest-html-tests
     runs-on: ubuntu-latest
@@ -114,18 +130,10 @@ jobs:
       run: ./configure --disable-openssl
     - name: make
       run: make
-    - name: Package build artifacts
-      run: |
-        mkdir -p dillo-mbedtls2
-        cp -r src/.libs dillo-mbedtls2/
-        tar -czf dillo-ubuntu-latest-mbedtls2.tar.gz dillo-mbedtls2
-    - name: Upload artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: dillo-ubuntu-latest-mbedtls2
-        path: dillo-ubuntu-latest-mbedtls2.tar.gz
-        retention-days: 30
-
+    - name: make check
+      run: make check
+    - name: make distcheck
+      run: make distcheck
   ubuntu-latest-openssl-3:
     needs: ubuntu-latest-html-tests
     runs-on: ubuntu-latest
@@ -143,18 +151,10 @@ jobs:
       run: ./configure --disable-mbedtls
     - name: make
       run: make
-    - name: Package build artifacts
-      run: |
-        mkdir -p dillo-openssl-3
-        cp -r src/.libs dillo-openssl-3/
-        tar -czf dillo-ubuntu-latest-openssl-3.tar.gz dillo-openssl-3
-    - name: Upload artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: dillo-ubuntu-latest-openssl-3
-        path: dillo-ubuntu-latest-openssl-3.tar.gz
-        retention-days: 30
-
+    - name: make check
+      run: make check
+    - name: make distcheck
+      run: make distcheck
   ubuntu-latest-with-old-std:
     needs: ubuntu-latest-html-tests
     runs-on: ubuntu-latest
@@ -169,21 +169,13 @@ jobs:
     - name: autogen
       run: ./autogen.sh
     - name: configure
+      # Make sure we build with the C++11 standard, so we fail to build on newer
+      # features.
       run: ./configure --disable-mbedtls CFLAGS="-Werror" CXXFLAGS="-Werror -std=c++11"
     - name: make
       run: make
-    - name: Package build artifacts
-      run: |
-        mkdir -p dillo-old-std
-        cp -r src/.libs dillo-old-std/
-        tar -czf dillo-ubuntu-latest-old-std.tar.gz dillo-old-std
-    - name: Upload artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: dillo-ubuntu-latest-old-std
-        path: dillo-ubuntu-latest-old-std.tar.gz
-        retention-days: 30
-
+    - name: make check
+      run: make check
   alpine-mbedtls-3_6_0:
     runs-on: ubuntu-latest
     steps:
@@ -203,18 +195,8 @@ jobs:
         ./autogen.sh
         ./configure
         make
-        # 打包编译产物
-        mkdir -p dillo-alpine
-        cp -r src/.libs dillo-alpine/
-        tar -czf dillo-alpine-mbedtls-3.6.0.tar.gz dillo-alpine
+        make check
       shell: alpine.sh {0}
-    - name: Upload artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: dillo-alpine-mbedtls-3.6.0
-        path: dillo-alpine-mbedtls-3.6.0.tar.gz
-        retention-days: 30
-
   macOS-13-openssl-1-1:
     needs: ubuntu-latest-html-tests
     runs-on: macos-13
@@ -232,18 +214,12 @@ jobs:
         ./configure --disable-mbedtls
     - name: make
       run: make
-    - name: Package build artifacts
+    - name: make check
+      run: make check
+    - name: make distcheck
       run: |
-        mkdir -p dillo-macos-openssl-1.1
-        cp -r src/.libs dillo-macos-openssl-1.1/
-        tar -czf dillo-macos-13-openssl-1.1.tar.gz dillo-macos-openssl-1.1
-    - name: Upload artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: dillo-macos-13-openssl-1.1
-        path: dillo-macos-13-openssl-1.1.tar.gz
-        retention-days: 30
-
+        export PATH="/usr/local/opt/fltk@1.3/bin:$PATH"
+        make distcheck
   macOS-13-openssl-3:
     needs: ubuntu-latest-html-tests
     runs-on: macos-13
@@ -263,53 +239,36 @@ jobs:
         ./configure --disable-mbedtls
     - name: make
       run: make
-    - name: Package build artifacts
+    - name: make check
+      run: make check
+    - name: make distcheck
       run: |
-        mkdir -p dillo-macos-openssl-3
-        cp -r src/.libs dillo-macos-openssl-3/
-        tar -czf dillo-macos-13-openssl-3.tar.gz dillo-macos-openssl-3
-    - name: Upload artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: dillo-macos-13-openssl-3
-        path: dillo-macos-13-openssl-3.tar.gz
-        retention-days: 30
-
+        export PATH="/usr/local/opt/fltk@1.3/bin:$PATH"
+        make distcheck
   freebsd-14-openssl-3:
     needs: ubuntu-latest-html-tests
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
-    - name: FreeBSD VM build & package
+    - name: FreeBSD VM build
       id: test
       uses: vmactions/freebsd-vm@v1
       with:
         release: "14.0"
         usesh: true
-        # 共享目录：VM 中的 /vagrant 同步到宿主 ./freebsd-artifacts
-        sync: |
-          /vagrant <-> ./freebsd-artifacts
         prepare: |
           set -x
           pkg install -y automake fltk
         run: |
           set -x
+          pwd
+          freebsd-version
           ./autogen.sh
           ./configure CPPFLAGS='-I/usr/local/include' LDFLAGS='-L/usr/local/lib'
+          cat config.log
           make
-          # 复制编译产物到共享目录
-          mkdir -p /vagrant/dillo-freebsd-14-openssl-3
-          cp -r src/.libs /vagrant/dillo-freebsd-14-openssl-3/
-          # 在 VM 中打包（可选，也可在宿主打包）
-          cd /vagrant
-          tar -czf dillo-freebsd-14-openssl-3.tar.gz dillo-freebsd-14-openssl-3
-    - name: Upload FreeBSD artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: dillo-freebsd-14-openssl-3
-        path: ./freebsd-artifacts/dillo-freebsd-14-openssl-3.tar.gz
-        retention-days: 30
-
+          make check
+          ldd src/dillo
   windows-mbedtls:
     needs: ubuntu-latest-html-tests
     runs-on: windows-latest
@@ -325,16 +284,10 @@ jobs:
       run: |
         set -x
         cd ${GITHUB_WORKSPACE}
+        pwd
+        ls -l
         ./autogen.sh
         ./configure
         make
-        # 打包编译产物
-        mkdir -p dillo-windows-mbedtls
-        cp -r src/.libs dillo-windows-mbedtls/
-        tar -czf dillo-windows-mbedtls.tar.gz dillo-windows-mbedtls
-    - name: Upload Windows artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: dillo-windows-mbedtls
-        path: dillo-windows-mbedtls.tar.gz
-        retention-days: 30
+        make check
+        ls -l src/dillo
