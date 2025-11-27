@@ -16,7 +16,8 @@ jobs:
       run: sudo apt update
     - name: Install dependencies
       run: sudo apt install -y libfltk1.3-dev libssl-dev libpng-dev libjpeg-dev libwebp-dev libbrotli-dev xvfb x11-apps x11-utils imagemagick
-
+    - name: Add execute permission to autogen.sh  # 新增
+      run: chmod +x autogen.sh
     - name: autogen
       run: ./autogen.sh
     - name: Make install dir
@@ -73,6 +74,8 @@ jobs:
       run: sudo apt update
     - name: Install dependencies
       run: sudo apt install -y libfltk1.3-dev libssl-dev libpng-dev libjpeg-dev libwebp-dev libbrotli-dev xvfb x11-apps x11-utils imagemagick
+    - name: Add execute permission to autogen.sh  # 新增
+      run: chmod +x autogen.sh
     - name: autogen
       run: ./autogen.sh
     - name: Make install dir
@@ -103,6 +106,8 @@ jobs:
       run: sudo apt update
     - name: Install dependencies
       run: sudo apt install -y libfltk1.3-dev
+    - name: Add execute permission to autogen.sh  # 新增
+      run: chmod +x autogen.sh
     - name: autogen
       run: ./autogen.sh
     - name: configure
@@ -124,6 +129,8 @@ jobs:
       run: sudo apt update
     - name: Install dependencies
       run: sudo apt install -y libfltk1.3-dev libmbedtls-dev
+    - name: Add execute permission to autogen.sh  # 新增
+      run: chmod +x autogen.sh
     - name: autogen
       run: ./autogen.sh
     - name: configure
@@ -145,6 +152,8 @@ jobs:
       run: sudo apt update
     - name: Install dependencies
       run: sudo apt install -y libfltk1.3-dev libssl-dev
+    - name: Add execute permission to autogen.sh  # 新增
+      run: chmod +x autogen.sh
     - name: autogen
       run: ./autogen.sh
     - name: configure
@@ -166,6 +175,8 @@ jobs:
       run: sudo apt update
     - name: Install dependencies
       run: sudo apt install -y libfltk1.3-dev libssl-dev
+    - name: Add execute permission to autogen.sh  # 新增
+      run: chmod +x autogen.sh
     - name: autogen
       run: ./autogen.sh
     - name: configure
@@ -192,6 +203,7 @@ jobs:
           libwebp-dev
           mbedtls-dev
     - run: |
+        chmod +x autogen.sh
         ./autogen.sh
         ./configure
         make
@@ -206,6 +218,8 @@ jobs:
         fetch-depth: 1
     - name: Install dependencies
       run: brew install autoconf automake fltk@1.3
+    - name: Add execute permission to autogen.sh  # 新增
+      run: chmod +x autogen.sh
     - name: autogen
       run: ./autogen.sh
     - name: configure
@@ -231,6 +245,8 @@ jobs:
       run: brew uninstall openssl@1.1
     - name: Install dependencies
       run: brew install autoconf automake fltk@1.3 openssl@3
+    - name: Add execute permission to autogen.sh  # 新增
+      run: chmod +x autogen.sh
     - name: autogen
       run: ./autogen.sh
     - name: configure
@@ -263,6 +279,7 @@ jobs:
           set -x
           pwd
           freebsd-version
+          chmod +x autogen.sh
           ./autogen.sh
           ./configure CPPFLAGS='-I/usr/local/include' LDFLAGS='-L/usr/local/lib'
           cat config.log
@@ -286,6 +303,7 @@ jobs:
         cd ${GITHUB_WORKSPACE}
         pwd
         ls -l
+        chmod +x autogen.sh
         ./autogen.sh
         ./configure
         make
