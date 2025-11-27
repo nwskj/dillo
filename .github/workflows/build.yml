@@ -9,7 +9,7 @@ on:
 
 jobs:
   build-freebsd:
-    runs-on: macos-13  # 使用macOS作为宿主系统运行FreeBSD虚拟机
+    runs-on: macos-13  # 保持 macOS 宿主系统（支持 VirtualBox）
 
     steps:
     - name: Checkout source code
@@ -19,6 +19,10 @@ jobs:
       uses: vmactions/freebsd-vm@v1
       with:
         usesh: true
+        # 关键修复1：指定 FreeBSD 版本（避免默认版本兼容问题）
+        release: 14.3
+        # 关键修复2：启用端口映射（确保宿主能通过 SSH 访问 VM）
+        ssh_port: 2222
         prepare: |
           pkg update -f
           pkg install -y \
@@ -32,46 +36,33 @@ jobs:
             libssl-devel \
             libpng-devel \
             libjpeg-turbo-devel \
-            webp-devel
+            webp-devel \
+            rsync  # 安装 rsync 用于文件同步（可选，替代 SCP）
         run: |
-          # 定义变量
+          # 定义变量（保持不变）
           PKGNAME="dillo"
           PKGVERSION="3.2.0"
           ARCH="amd64"
           PKGDEST="./packages"
           WRKSRC="./work"
 
-          # 创建工作目录
+          # 创建工作目录并编译（保持不变）
           mkdir -p $WRKSRC $PKGDEST
           cd $WRKSRC || exit 1
-
-          # 复制源码
           cp -r ../. dillo
           cd dillo || exit 1
-
-          # 生成配置文件
           ./autogen.sh || exit 1
-
-          # 创建构建目录
           mkdir -p build && cd build || exit 1
-
-          # 配置编译选项
           ../configure \
             --prefix=/usr/local \
             CPPFLAGS='-I/usr/local/include' \
             LDFLAGS='-L/usr/local/lib' || exit 1
-
-          # 编译
           gmake || exit 1
-
-          # 安装到临时目录
           DESTDIR=$WRKSRC/stage gmake install || exit 1
 
-          # 创建打包目录结构
+          # 打包（保持不变）
           mkdir -p $PKGDEST/$PKGNAME-$PKGVERSION-$ARCH/usr/local
           cp -r $WRKSRC/stage/usr/local/* $PKGDEST/$PKGNAME-$PKGVERSION-$ARCH/usr/local/
-
-          # 生成打包信息
           cat > $PKGDEST/$PKGNAME-$PKGVERSION-$ARCH/+MANIFEST << EOF
           name: $PKGNAME
           version: $PKGVERSION
@@ -81,31 +72,45 @@ jobs:
           maintainer: $GITHUB_ACTOR@users.noreply.github.com
           prefix: /usr/local
           EOF
-
-          # 打包为txz格式
           cd $PKGDEST || exit 1
           tar -Jcvf $PKGNAME-$PKGVERSION-$ARCH.txz $PKGNAME-$PKGVERSION-$ARCH
 
-          # 复制到宿主系统可访问的目录
+          # 关键修复3：将 artifacts 复制到 VM 的 /tmp 目录（宿主可通过 SSH 访问）
           mkdir -p /tmp/artifacts
           cp $PKGNAME-$PKGVERSION-$ARCH.txz /tmp/artifacts/
 
-    - name: Extract artifacts from VM
+    - name: Extract artifacts from FreeBSD VM
       run: |
-        # 从FreeBSD VM中复制打包好的文件到宿主系统
+        # 关键修复4：使用 SCP 从 VM 复制文件（替代 docker cp）
+        # 虚拟机默认用户名：root，密码：root（vmactions/freebsd-vm 内置配置）
         mkdir -p artifacts
-        docker cp freebsd-vm:/tmp/artifacts/. artifacts/
+        # 忽略 SSH 主机密钥验证（避免首次连接交互）
+        ssh-keyscan -p 2222 localhost >> ~/.ssh/known_hosts
+        # 通过 SCP 复制文件（端口 2222 是步骤2中指定的 ssh_port）
+        scp -P 2222 root@localhost:/tmp/artifacts/*.txz artifacts/
+      env:
+        # 关键：设置 SSH 密码（vmactions/freebsd-vm 默认密码为 root）
+        SSHPASS: root
+      # 可选：添加 retries 防止网络波动
+      uses: nick-invision/retry@v2
+      with:
+        timeout_minutes: 5
+        max_attempts: 3
+        command: |
+          mkdir -p artifacts
+          ssh-keyscan -p 2222 localhost >> ~/.ssh/known_hosts
+          scp -o StrictHostKeyChecking=no -P 2222 root@localhost:/tmp/artifacts/*.txz artifacts/
 
     - name: Upload artifacts
-      uses: actions/upload-artifact@v4  # 更新为v4版本
+      uses: actions/upload-artifact@v4
       with:
         name: dillo-freebsd-amd64
         path: artifacts/*.txz
-        retention-days: 30  # v4版本需要显式指定保留天数（可选，默认90天）
+        retention-days: 30
 
     - name: Release
       if: startsWith(github.ref, 'refs/tags/')
-      uses: softprops/action-gh-release@v2  # 同时更新此动作到最新版
+      uses: softprops/action-gh-release@v2
       with:
         files: artifacts/*.txz
         name: Dillo ${{ github.ref_name }}
