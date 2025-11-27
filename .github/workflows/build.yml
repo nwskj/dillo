@@ -9,7 +9,7 @@ on:
 
 jobs:
   build-freebsd:
-    runs-on: macos-13  # 保持 macOS 宿主系统（支持 VirtualBox）
+    runs-on: macos-13
 
     steps:
     - name: Checkout source code
@@ -19,9 +19,7 @@ jobs:
       uses: vmactions/freebsd-vm@v1
       with:
         usesh: true
-        # 关键修复1：指定 FreeBSD 版本（避免默认版本兼容问题）
         release: 14.3
-        # 关键修复2：启用端口映射（确保宿主能通过 SSH 访问 VM）
         ssh_port: 2222
         prepare: |
           pkg update -f
@@ -37,16 +35,14 @@ jobs:
             libpng-devel \
             libjpeg-turbo-devel \
             webp-devel \
-            rsync  # 安装 rsync 用于文件同步（可选，替代 SCP）
+            rsync
         run: |
-          # 定义变量（保持不变）
           PKGNAME="dillo"
           PKGVERSION="3.2.0"
           ARCH="amd64"
           PKGDEST="./packages"
           WRKSRC="./work"
 
-          # 创建工作目录并编译（保持不变）
           mkdir -p $WRKSRC $PKGDEST
           cd $WRKSRC || exit 1
           cp -r ../. dillo
@@ -60,7 +56,6 @@ jobs:
           gmake || exit 1
           DESTDIR=$WRKSRC/stage gmake install || exit 1
 
-          # 打包（保持不变）
           mkdir -p $PKGDEST/$PKGNAME-$PKGVERSION-$ARCH/usr/local
           cp -r $WRKSRC/stage/usr/local/* $PKGDEST/$PKGNAME-$PKGVERSION-$ARCH/usr/local/
           cat > $PKGDEST/$PKGNAME-$PKGVERSION-$ARCH/+MANIFEST << EOF
@@ -75,31 +70,23 @@ jobs:
           cd $PKGDEST || exit 1
           tar -Jcvf $PKGNAME-$PKGVERSION-$ARCH.txz $PKGNAME-$PKGVERSION-$ARCH
 
-          # 关键修复3：将 artifacts 复制到 VM 的 /tmp 目录（宿主可通过 SSH 访问）
           mkdir -p /tmp/artifacts
           cp $PKGNAME-$PKGVERSION-$ARCH.txz /tmp/artifacts/
 
+    # 关键修复：拆分步骤，将 retry 逻辑单独作为一个步骤（使用 uses），命令放在 with.command 中
     - name: Extract artifacts from FreeBSD VM
-      run: |
-        # 关键修复4：使用 SCP 从 VM 复制文件（替代 docker cp）
-        # 虚拟机默认用户名：root，密码：root（vmactions/freebsd-vm 内置配置）
-        mkdir -p artifacts
-        # 忽略 SSH 主机密钥验证（避免首次连接交互）
-        ssh-keyscan -p 2222 localhost >> ~/.ssh/known_hosts
-        # 通过 SCP 复制文件（端口 2222 是步骤2中指定的 ssh_port）
-        scp -P 2222 root@localhost:/tmp/artifacts/*.txz artifacts/
-      env:
-        # 关键：设置 SSH 密码（vmactions/freebsd-vm 默认密码为 root）
-        SSHPASS: root
-      # 可选：添加 retries 防止网络波动
-      uses: nick-invision/retry@v2
+      uses: nick-invision/retry@v2  # 单独步骤使用 uses 引用 retry Action
       with:
         timeout_minutes: 5
         max_attempts: 3
+        # 所有命令整合到 command 中，用换行分隔
         command: |
           mkdir -p artifacts
           ssh-keyscan -p 2222 localhost >> ~/.ssh/known_hosts
+          # 禁用严格主机密钥检查，避免交互
           scp -o StrictHostKeyChecking=no -P 2222 root@localhost:/tmp/artifacts/*.txz artifacts/
+      env:
+        SSHPASS: root  # 密码仅用于参考，retry Action 不直接使用，scp 需确保密码正确
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
