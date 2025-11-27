@@ -48,10 +48,11 @@ jobs:
           tar -czvf ../dillo-linux-arm64.tar.gz *
 
       - name: 上传构建产物
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4  # 升级到 v4
         with:
           name: dillo-linux-arm64
           path: dillo-linux-arm64.tar.gz
+          if-no-files-found: error  # 可选：文件不存在时报错（默认警告）
 
   # Linux AMD64 构建与打包
   linux-amd64:
@@ -90,10 +91,11 @@ jobs:
           tar -czvf ../dillo-linux-amd64.tar.gz *
 
       - name: 上传构建产物
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4  # 升级到 v4
         with:
           name: dillo-linux-amd64
           path: dillo-linux-amd64.tar.gz
+          if-no-files-found: error
 
   # Windows x64 构建与打包 (Cygwin)
   windows-64:
@@ -130,10 +132,11 @@ jobs:
           zip -r ${GITHUB_WORKSPACE}/dillo-windows-64.zip *
 
       - name: 上传构建产物
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4  # 升级到 v4
         with:
           name: dillo-windows-64
           path: dillo-windows-64.zip
+          if-no-files-found: error
 
   # FreeBSD amd64 构建与打包
   freebsd-amd64:
@@ -162,7 +165,8 @@ jobs:
             tar -czvf ${GITHUB_WORKSPACE}/dillo-freebsd-amd64.tar.gz *
 
       - name: 上传构建产物
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4  # 升级到 v4
         with:
           name: dillo-freebsd-amd64
           path: dillo-freebsd-amd64.tar.gz
+          if-no-files-found: error
